@@ -222,7 +222,6 @@ export async function getProfile(
  *   ② 그 creation_id로 발행
  */
 export async function publishTextPost(
-  userId: string,
   text: string,
   accessToken: string,
 ): Promise<{ id: string }> {
@@ -230,6 +229,13 @@ export async function publishTextPost(
   if (!trimmed) {
     throw new ThreadsApiError('발행할 내용이 비어 있습니다.', 400, null)
   }
+
+  // 발행 대상 사용자 ID는 /me 에서 다시 조회해 쓴다.
+  // 토큰 교환에서 받은 user_id가 발행 엔드포인트에서 "does not exist"로 거부되는
+  // 경우가 있어서, 권한이 이미 확인된 /me 의 id 를 신뢰한다.
+  // (/me 의 id 는 문자열이라 큰 숫자 정밀도 문제도 없다)
+  const me = await getProfile(accessToken)
+  const userId = me.id
 
   // ① 컨테이너 생성
   const containerForm = new URLSearchParams({

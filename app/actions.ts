@@ -21,7 +21,7 @@ export async function publishAction(formData: FormData): Promise<void> {
   let postId: string
 
   try {
-    const result = await publishTextPost(conn.userId, text, conn.accessToken)
+    const result = await publishTextPost(text, conn.accessToken)
     postId = result.id
   } catch (error) {
     const message =
