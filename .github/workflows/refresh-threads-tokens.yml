@@ -1,0 +1,56 @@
+# 스레드 장기 토큰 자동 갱신
+#
+# 장기 토큰은 60일짜리이고 만료되면 되살릴 수 없다. 한 번 놓치면 계정을 전부
+# 손으로 다시 인증해야 하므로, 매일 한 번 확인해서 만료 10일 전부터 갱신한다.
+#
+# 처음 한 번만 설정하면 됩니다 (GitHub 저장소 → Settings → Secrets and
+# variables → Actions → New repository secret):
+#   APP_URL      = https://threads-automation-iota.vercel.app   (끝에 / 없이)
+#   CRON_SECRET  = Vercel 환경변수에 넣은 것과 똑같은 값
+name: 스레드 토큰 갱신
+
+on:
+  schedule:
+    # 매일 03:00 (한국 시간). GitHub는 UTC 기준이라 18:00 UTC로 적는다.
+    - cron: '0 18 * * *'
+  # 탭에서 버튼으로 즉시 실행할 수 있게 열어둔다. 설정 직후 확인용.
+  workflow_dispatch:
+
+# 앞선 실행이 아직 돌고 있으면 겹쳐 돌리지 않는다.
+concurrency:
+  group: refresh-threads-tokens
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 갱신 요청
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${APP_URL}" ] || [ -z "${CRON_SECRET}" ]; then
+            echo "::error::APP_URL 또는 CRON_SECRET 시크릿이 비어 있습니다."
+            echo "저장소 Settings > Secrets and variables > Actions 에서 넣어주세요."
+            exit 1
+          fi
+
+          status=$(curl --silent --show-error \
+            --connect-timeout 15 --max-time 120 \
+            --retry 3 --retry-delay 5 --retry-connrefused \
+            --output response.json --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/refresh-tokens")
+
+          echo "HTTP ${status}"
+          cat response.json
+          echo
+
+          if [ "${status}" != "200" ]; then
+            echo "::error::토큰 갱신 실패 (HTTP ${status}). 위 응답을 확인하세요."
+            exit 1
+          fi

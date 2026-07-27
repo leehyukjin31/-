@@ -224,18 +224,20 @@ export async function getProfile(
 export async function publishTextPost(
   text: string,
   accessToken: string,
+  knownUserId?: string,
 ): Promise<{ id: string }> {
   const trimmed = text.trim()
   if (!trimmed) {
     throw new ThreadsApiError('발행할 내용이 비어 있습니다.', 400, null)
   }
 
-  // 발행 대상 사용자 ID는 /me 에서 다시 조회해 쓴다.
-  // 토큰 교환에서 받은 user_id가 발행 엔드포인트에서 "does not exist"로 거부되는
-  // 경우가 있어서, 권한이 이미 확인된 /me 의 id 를 신뢰한다.
-  // (/me 의 id 는 문자열이라 큰 숫자 정밀도 문제도 없다)
-  const me = await getProfile(accessToken)
-  const userId = me.id
+  // 발행 대상 사용자 ID는 반드시 /me 의 id 여야 한다.
+  // 토큰 교환에서 받은 user_id를 쓰면 발행 엔드포인트가 "does not exist"로
+  // 거부하는 경우가 있다. (/me 의 id 는 문자열이라 큰 숫자 정밀도 문제도 없다)
+  //
+  // DB에 저장된 값은 이미 /me 에서 받아둔 것이므로 그대로 쓰고,
+  // 없을 때만 조회한다. 발행 1건당 API 호출을 하나 아낀다.
+  const userId = knownUserId ?? (await getProfile(accessToken)).id
 
   // ① 컨테이너 생성
   const containerForm = new URLSearchParams({
