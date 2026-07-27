@@ -1,58 +1,17 @@
 /**
- * 1단계용 임시 토큰 보관소.
+ * OAuth 인증 과정에서 잠깐 쓰는 쿠키.
  *
- * 지금은 httpOnly 쿠키에 넣는다. 쿠키는 브라우저 JS가 읽을 수 없고 서버만 읽으므로
- * 혼자 테스트하는 단계에서는 충분히 안전하다.
+ * 1단계에서는 여기에 토큰까지 넣었지만, 이제 토큰은 Supabase(lib/accounts.ts)에 있다.
+ * 쿠키로는 계정 여러 개를 담을 수 없고, 브라우저가 꺼지면 서버가 못 읽어서
+ * 예약 발행과 토큰 자동 갱신이 불가능하기 때문이다.
  *
- * 3단계(병원 7계정)에서는 Supabase DB로 옮긴다. 이유:
- *   - 계정이 여러 개면 쿠키 하나로는 부족
- *   - 예약 발행은 대표님이 브라우저를 안 열어도 서버 혼자 돌아야 하는데,
- *     쿠키는 브라우저에 있어서 서버 혼자서는 못 읽는다
+ * 그래서 이 파일에는 CSRF 방어용 state 만 남는다.
  */
 import { cookies } from 'next/headers'
 
-const CONNECTION_COOKIE = 'threads_connection'
 const STATE_COOKIE = 'threads_oauth_state'
 
-export type ThreadsConnection = {
-  userId: string
-  username?: string
-  accessToken: string
-  /** 장기 토큰 발급 시각 (ISO). 갱신 시점 계산용. */
-  obtainedAt: string
-}
-
 const isProd = process.env.NODE_ENV === 'production'
-
-export async function saveConnection(conn: ThreadsConnection): Promise<void> {
-  const jar = await cookies()
-  jar.set(CONNECTION_COOKIE, JSON.stringify(conn), {
-    httpOnly: true, // 브라우저 JS에서 접근 불가
-    secure: isProd, // 배포 환경에서는 https 로만 전송
-    sameSite: 'lax', // OAuth 리다이렉트로 돌아올 때 쿠키가 유지되도록
-    path: '/',
-    maxAge: 60 * 60 * 24 * 60, // 60일 (장기 토큰 수명과 동일)
-  })
-}
-
-export async function getConnection(): Promise<ThreadsConnection | null> {
-  const jar = await cookies()
-  const raw = jar.get(CONNECTION_COOKIE)?.value
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as ThreadsConnection
-    if (!parsed?.accessToken || !parsed?.userId) return null
-    return parsed
-  } catch {
-    // 형식이 깨진 쿠키는 없는 것으로 취급
-    return null
-  }
-}
-
-export async function clearConnection(): Promise<void> {
-  const jar = await cookies()
-  jar.delete(CONNECTION_COOKIE)
-}
 
 /**
  * CSRF 방지용 state.
@@ -63,9 +22,9 @@ export async function issueState(): Promise<string> {
   const state = crypto.randomUUID()
   const jar = await cookies()
   jar.set(STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax',
+    httpOnly: true, // 브라우저 JS에서 접근 불가
+    secure: isProd, // 배포 환경에서는 https 로만 전송
+    sameSite: 'lax', // OAuth 리다이렉트로 돌아올 때 쿠키가 유지되도록
     path: '/',
     maxAge: 60 * 10, // 10분이면 인증 끝내기 충분
   })
